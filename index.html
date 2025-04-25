@@ -10,7 +10,7 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      background-color: white;
+      background-color: transparent;
       color: #102A43;
     }
 
@@ -172,6 +172,35 @@
       40% {
         transform: scale(1);
       }
+    }
+
+    .gerecht-title {
+      background-color: transparent;
+      backdrop-filter: blur(2px);
+      padding: 8px 12px;
+      border-radius: 12px;
+      margin-bottom: 12px;
+      display: inline-block;
+    }
+
+    .wijncard-hidden {
+      opacity: 0;
+    }
+
+    @keyframes fadeSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.98);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .wijn-card.animate-in {
+      animation: fadeSlideIn 0.6s ease-out forwards;
     }
   </style>
 </head>
@@ -511,33 +540,62 @@
 
           const title = document.createElement("h4");
           title.textContent = item.gerecht;
-          title.classList.add("text-[#102A43]");
+          title.classList.add("text-[#102A43]", "wijncard-hidden", "gerecht-title");
+          title.dataset.gerecht = item.gerecht;
           gerechtDiv.appendChild(title);
 
           item.wijnen.forEach(wijn => {
+            // 🧱 Maak wrapper div (voor fade-in animatie)
+            const wijnWrapper = document.createElement("div");
+            wijnWrapper.classList.add("wijn-card", "wijncard-hidden", "mb-2");
+
+            // 🧱 Maak de echte card
             const wijnCard = document.createElement("div");
-            wijnCard.classList.add("card", "mb-2", "p-2");
+            wijnCard.classList.add("card", "p-2");
 
-            wijnCard.innerHTML = `
-              <div class="d-flex flex-row justify-content-between">
-                <div class="w-75">
-                  <h5>${wijn.name}</h5>
-                  <h6 class="followup-text mt-2 fst-italic text-muted medium" 
-                      data-gerecht="${item.gerecht}" 
-                      data-wine="${wijn.name}">
-                    <div class="dot-loader followup-loader mx-auto my-auto">
-                      <span></span><span></span><span></span>
-                    </div>.
-                  </h6>
-                </div>
-                <div class="w-25 d-flex justify-content-center">
-                  ${wijn.storeLink ? `<p><a href="${wijn.storeLink}" target="_blank">${wijn.image ? `<img src="${wijn.image}" alt="${wijn.name}">` : ""}</a></p>` : ""}
-                </div>
-              </div>
-            `;
+            // 📦 Binnenkant van de kaart
+            const innerDiv = document.createElement("div");
+            innerDiv.classList.add("d-flex", "flex-row", "justify-content-between");
 
-            gerechtDiv.appendChild(wijnCard);
+            const leftDiv = document.createElement("div");
+            leftDiv.classList.add("w-75");
+            const title = document.createElement("h5");
+            title.textContent = wijn.name;
+
+            const followup = document.createElement("h6");
+            followup.classList.add("followup-text", "mt-2", "fst-italic", "text-muted", "medium");
+            followup.dataset.gerecht = item.gerecht;
+            followup.dataset.wine = wijn.name;
+
+            leftDiv.appendChild(title);
+            leftDiv.appendChild(followup);
+
+            const rightDiv = document.createElement("div");
+            rightDiv.classList.add("w-25", "d-flex", "justify-content-center");
+
+            if (wijn.storeLink) {
+              const link = document.createElement("a");
+              link.href = wijn.storeLink;
+              link.target = "_blank";
+
+              if (wijn.image) {
+                const img = document.createElement("img");
+                img.src = wijn.image;
+                img.alt = wijn.name;
+                link.appendChild(img);
+              }
+
+              rightDiv.appendChild(link);
+            }
+
+            // 🧩 Opbouwen
+            innerDiv.appendChild(leftDiv);
+            innerDiv.appendChild(rightDiv);
+            wijnCard.appendChild(innerDiv);
+            wijnWrapper.appendChild(wijnCard);
+            gerechtDiv.appendChild(wijnWrapper);
           });
+
 
           resultContainer.appendChild(gerechtDiv);
         });
@@ -545,35 +603,56 @@
         document.getElementById("searchScreen").classList.add("hidden");
         document.getElementById("menuResultScreen").classList.remove("hidden");
 
-        // 🔁 Followup call
         const followupResponse = await fetch("https://wijntje-web-test-8598000a4770.herokuapp.com/followup", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({gerechtenMetWijnen: gerechten})
         });
 
-        const followupData = await followupResponse.json();
-        console.log("📎 Follow-up:", followupData);
+        const reader = followupResponse.body.getReader();
+        const decoder = new TextDecoder("utf-8");
 
-        // 💬 Injecteer follow-up beschrijvingen
-        followupData.winePerDish.forEach(item => {
-          const elements = document.querySelectorAll(".followup-text");
-          elements.forEach(el => {
-            if (
-              el.dataset.gerecht === item.gerecht &&
-              el.dataset.wine === item.wine
-            ) {
-              el.innerHTML = item.beschrijving;
+        while (true) {
+          const {value, done} = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, {stream: true});
+          const lines = chunk.split(/\r?\n/).filter(line => line.startsWith("data: "));
+
+          for (const line of lines) {
+            const jsonString = line.replace("data: ", "").trim();
+            if (jsonString === "done") continue;
+
+            const {gerecht, wine, beschrijving} = JSON.parse(jsonString);
+
+            console.log(`🍷 Ontvangen: ${gerecht} - ${wine}`);
+
+            const elements = document.querySelectorAll(".followup-text");
+            elements.forEach(el => {
+              if (el.dataset.gerecht === gerecht && el.dataset.wine === wine) {
+                // Zoek de ouder wijncard
+                const wijnCard = el.closest(".wijn-card");
+
+                if (wijnCard) {
+                  el.innerHTML = beschrijving;
+                  wijnCard.classList.remove("wijncard-hidden");
+                  wijnCard.classList.add("animate-in");
+                }
+              }
+            });
+            const gerechtTitle = document.querySelector(`.gerecht-title[data-gerecht="${gerecht}"]`);
+            if (gerechtTitle && gerechtTitle.classList.contains("wijncard-hidden")) {
+              gerechtTitle.classList.remove("wijncard-hidden");
+              gerechtTitle.classList.add("animate-in");
             }
-          });
-        });
+          }
+        }
 
       } catch (err) {
         console.error("❌ Upload error:", err);
         alert("Upload mislukt: " + err.message);
       }
     }
-
 
     uploadBtn.addEventListener('click', (e) => {
       e.preventDefault();
