@@ -273,7 +273,6 @@
     let selectedName = "";
     let selectedRegion = "";
     let selectedType = "";
-    let filteredWinesGlobal = [];
 
     function disableButtons() {
       searchBtn.disabled = true;
@@ -299,7 +298,7 @@
       loadingDiv.classList.remove('hidden');
 
       try {
-        const response = await fetch('https://wijntje-web-test-8598000a4770.herokuapp.com/input-analyse', {
+        const response = await fetch('http://localhost:3000/input-analyse', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({input})
@@ -307,31 +306,32 @@
 
         if (response.ok) {
           const data = await response.json();
-          filteredWinesGlobal = data.filteredWines;
           loadingDiv.classList.add('hidden');
 
           if (data.recommendations.length > 0) {
-            data.recommendations.forEach(rec => {
+            data.recommendations.forEach((rec, i) => {
               const card = document.createElement('div');
               card.classList.add('card', 'p-3', 'mb-2', 'shadow-sm');
 
               if (data.type === "gerecht") {
-                card.innerHTML = `<h4>${rec.name}, ${rec.region}</h4>
-                        <p>${rec.description}</p>
-                        <button class="btn btn-primary btn-sm more-info-btn" 
-                          data-name="${rec.name}" 
-                          data-region="${rec.region}" 
-                          data-type="${data.type}">
-                          Meer Info
-                        </button>`;
+                card.innerHTML = `<h4>${data.druiven[i]}, ${rec.region}</h4>
+            <p>${rec.description}</p>
+            <button class="btn btn-primary btn-sm more-info-btn" 
+              data-druif="${data.druiven[i]}" 
+              data-region="${rec.region}" 
+              data-name="${rec.name}"
+              data-type="${data.type}"
+              data-lijst='${JSON.stringify(data.wijnLijsten[i])}'>
+              Meer Info
+            </button>`;
               } else if (data.type === "wijn") {
                 card.innerHTML = `<h4>${rec.name}</h4>
-                        <p>${rec.description}</p>
-                        <button class="btn btn-primary btn-sm more-info-btn" 
-                          data-name="${rec.name}" 
-                          data-type="${data.type}">
-                          Meer Info
-                        </button>`;
+            <p>${rec.description}</p>
+            <button class="btn btn-primary btn-sm more-info-btn" 
+              data-name="${rec.name}" 
+              data-type="${data.type}">
+              Meer Info
+            </button>`;
               }
 
               recommendationsDiv.appendChild(card);
@@ -341,7 +341,9 @@
               btn.addEventListener('click', async (e) => {
                 selectedName = e.target.getAttribute('data-name');
                 selectedType = e.target.getAttribute('data-type');
+                let selectedDruif = e.target.getAttribute('data-druif') || "";
                 selectedRegion = e.target.getAttribute('data-region') || "";
+                let wijnLijsten = JSON.parse(e.target.getAttribute('data-lijst') || "[]");
 
                 loadingDiv.classList.remove('hidden');
 
@@ -354,12 +356,13 @@
                 // If type is "gerecht", include additional fields
                 if (selectedType === "gerecht") {
                   requestBody.place = selectedRegion;
+                  requestBody.druif = selectedDruif;
                 }
 
                 console.log("Sending request:", JSON.stringify(requestBody));
 
                 try {
-                  const explainResponse = await fetch('https://wijntje-web-test-8598000a4770.herokuapp.com/explain-combination', {
+                  const explainResponse = await fetch('http://localhost:3000/explain-combination', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(requestBody),
@@ -375,15 +378,14 @@
                   }
 
                   document.getElementById('infoTitle').innerText = selectedType === "gerecht"
-                    ? `${selectedName}, ${selectedRegion}`
+                    ? `${selectedDruif}, ${selectedRegion}`
                     : `${selectedName}`;
 
                   document.getElementById('infoDescription').innerText = explainData.wijnSpijs || "Geen informatie beschikbaar";
 
                   // Only fetch wine images when type is "gerecht"
                   if (selectedType === "gerecht") {
-                    console.log("📸 Fetching wine images for:", selectedName);
-                    await fetchWineImages(selectedName, selectedRegion);
+                    await fetchWineImages(selectedName, wijnLijsten);
                   } else {
                     wineImagesDiv.innerHTML = ''; // Clear the wine images section
                   }
@@ -414,17 +416,15 @@
       }
     });
 
-    async function fetchWineImages(name, place) {
+    async function fetchWineImages(name, lijst) {
       const wineImagesDiv = document.getElementById("wineImages");
       wineImagesDiv.innerHTML = "Laden...";
 
-      console.log(`🔍 Fetching images for: ${name} in ${place}`);
-
       try {
-        const response = await fetch("https://wijntje-web-test-8598000a4770.herokuapp.com/generate-image", {
+        const response = await fetch("http://localhost:3000/generate-image", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({Name: name, filteredWines: filteredWinesGlobal}), // Send both Name and Place
+          body: JSON.stringify({ Name: name, Lijst: lijst }),
         });
 
         wineImagesDiv.innerHTML = "";
@@ -470,7 +470,7 @@
           }
 
           const img = document.createElement("img");
-          img.src = `https://wijntje-web-test-8598000a4770.herokuapp.com/proxy-image?url=${encodeURIComponent(wine.image)}`;
+          img.src = `http://localhost:3000/proxy-image?url=${encodeURIComponent(wine.image)}`;
           img.alt = "Wine Image";
           img.classList.add("generatedImage");
 
@@ -519,7 +519,7 @@
       formData.append("file", file);
 
       try {
-        const res = await fetch("https://wijntje-web-test-8598000a4770.herokuapp.com/upload-file", {
+        const res = await fetch("http://localhost:3000/upload-file", {
           method: "POST",
           body: formData
         });
@@ -603,7 +603,7 @@
         document.getElementById("searchScreen").classList.add("hidden");
         document.getElementById("menuResultScreen").classList.remove("hidden");
 
-        const followupResponse = await fetch("https://wijntje-web-test-8598000a4770.herokuapp.com/followup", {
+        const followupResponse = await fetch("http://localhost:3000/followup", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({gerechtenMetWijnen: gerechten})
